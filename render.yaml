@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: index-valuation
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: WGLH_USERNAME
+        sync: false
+      - key: WGLH_PASSWORD
+        sync: false
