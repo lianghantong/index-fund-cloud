@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>估值标尺 · 指数基金自动筛选</title>
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@600;700;900&family=Noto Sans+SC:wght@300;400;500;700&display=swap">
+<style>
+:root{
+  --paper:#F3F4F0;--surface:#FFFFFF;--surface-2:#F8F9F5;
+  --ink:#161816;--ink-2:#383D38;--muted:#646B5E;
+  --hairline:#DDE1D8;--hairline-2:#C7CCC1;
+  --buy:#CF332B;--buy-strong:#B2261F;--buy-soft:#F4D9D6;--buy-tint:#FBEEEC;
+  --sell:#157F55;--sell-strong:#0E6443;--sell-soft:#CBE7DA;--sell-tint:#EAF5EF;
+  --hold:#976305;--hold-soft:#EFE0C0;--hold-tint:#F8F1E1;
+  --band:#141714;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;font-size:15px;-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
+.wrap{max-width:1200px;margin:0 auto;padding:0 20px}
+
+.masthead{border-bottom:1px solid var(--hairline-2);background:var(--surface)}
+.masthead .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand h1{font-family:"Noto Serif SC","Songti SC","SimSun",serif;font-weight:900;font-size:21px;line-height:1.2}
+.brand .sub{font-size:12px;color:var(--muted);margin-top:2px}
+.masthead-meta{text-align:right;font-size:12px;color:var(--muted);line-height:1.6}
+.masthead-meta b{color:var(--ink-2);font-weight:600}
+@media(max-width:640px){.masthead .wrap{flex-direction:column;align-items:flex-start}.masthead-meta{text-align:left}}
+
+.band{background:var(--band);color:#ECEEE6}
+.band .wrap{padding:22px 20px}
+.band-grid{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center}
+.band-counts{display:flex;border:1px solid #2C302B;border-radius:6px;overflow:hidden}
+.band-count{padding:12px 20px;text-align:center;border-right:1px solid #2C302B;min-width:92px}
+.band-count:last-child{border-right:none}
+.band-count .n{font-family:"Noto Serif SC",serif;font-size:28px;font-weight:700;line-height:1;display:block}
+.band-count .t{font-size:12px;color:#9AA094;margin-top:6px;display:block}
+.band-count.buy .n{color:#F0705F}.band-count.sell .n{color:#43C28E}.band-count.hold .n{color:#D8AE63}
+.band-msg{font-size:14px;line-height:1.7}
+.band-msg .lead{font-family:"Noto Serif SC",serif;font-weight:700;font-size:16px;margin-bottom:4px}
+.band-msg .alertline{color:#B9C0B2}
+.tag-buy{color:#F0705F;font-weight:600}.tag-sell{color:#43C28E;font-weight:600}
+@media(max-width:760px){.band-grid{grid-template-columns:1fr;gap:16px}.band-count{min-width:0;padding:10px 14px;flex:1}}
+
+.toolbar{padding-top:22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--hairline-2);background:var(--surface);color:var(--ink-2);padding:8px 14px;border-radius:999px;font-size:13px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:7px;transition:all .15s;min-height:38px}
+.chip .c{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip:hover{border-color:var(--ink-2)}
+.chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}.chip.active .c{color:#C9CDBF}
+.chip.dot-buy.active{background:var(--buy);border-color:var(--buy)}
+.chip.dot-sell.active{background:var(--sell);border-color:var(--sell)}
+.chip.dot-hold.active{background:var(--hold);border-color:var(--hold)}
+.btn-refresh{border:1px solid var(--ink);background:var(--ink);color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;min-height:38px;display:inline-flex;align-items:center;gap:7px}
+.btn-refresh:hover{background:#000}
+.btn-refresh:disabled{opacity:.6;cursor:wait}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px;padding:16px 0 8px}
+.card{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;display:flex;flex-direction:column;overflow:hidden}
+.card.sig-buy{border-color:var(--buy)}.card.sig-sell{border-color:var(--sell)}
+.card-topbar{height:4px;width:100%;background:var(--hairline)}
+.card.sig-buy .card-topbar{background:var(--buy)}.card.sig-sell .card-topbar{background:var(--sell)}
+.card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:16px 18px 0}
+.card-head h3{font-family:"Noto Serif SC",serif;font-size:17px;font-weight:700}
+.card-head .idx{font-size:12px;color:var(--muted);margin-top:2px}
+.mkt{font-size:11px;padding:3px 8px;border-radius:5px;border:1px solid var(--hairline-2);color:var(--muted);white-space:nowrap;font-weight:500}
+.mkt.a{background:var(--buy-tint);color:var(--buy-strong);border-color:var(--buy-soft)}
+.mkt.hk{background:var(--hold-tint);color:var(--hold);border-color:var(--hold-soft)}
+.mkt.us{background:var(--surface-2);color:var(--ink-2)}
+
+.stats{display:grid;grid-template-columns:1.15fr 1fr;gap:10px;padding:14px 18px 4px}
+.stat{background:var(--surface-2);border:1px solid var(--hairline);border-radius:8px;padding:10px 12px}
+.stat .lab{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}
+.stat .big{font-size:22px;font-weight:700;line-height:1.1}
+.stat.pe .big{font-size:26px}
+.stat .meta{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+.signal{margin:12px 18px 0;border-radius:8px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.signal .ico{flex:none}.signal .txt b{font-size:14px;font-weight:700;display:block}.signal .txt span{font-size:11.5px;opacity:.85}
+.signal.buy{background:var(--buy-tint);border:1px solid var(--buy-soft);color:var(--buy-strong)}
+.signal.sell{background:var(--sell-tint);border:1px solid var(--sell-soft);color:var(--sell-strong)}
+.signal.hold{background:var(--hold-tint);border:1px solid var(--hold-soft);color:var(--hold)}
+
+.scale{padding:14px 18px 14px}
+.scale-track{position:relative;height:12px;border-radius:6px;display:flex}
+.seg{height:100%}
+.seg.zb{background:var(--buy-soft);border-radius:6px 0 0 6px}
+.seg.zn{background:#E6E8E1}
+.seg.zs{background:var(--sell-soft);border-radius:0 6px 6px 0}
+.seg-div{width:1px;background:var(--surface)}
+.scale-marker{position:absolute;top:-4px;transform:translateX(-50%);z-index:2}
+.scale-marker .pin{width:3px;height:20px;background:var(--ink);border-radius:2px;margin:0 auto}
+.scale-marker .cap{position:absolute;top:-21px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:10.5px;padding:2px 6px;border-radius:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.scale-labels{position:relative;margin-top:10px;height:15px}
+.scale-labels .tick{position:absolute;transform:translateX(-50%);font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.scale-zones{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:3px}
+
+.card-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding:12px 18px 14px;border-top:1px solid var(--hairline)}
+.src-link{font-size:11.5px;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.src-link:hover{color:var(--ink)}
+
+.loading{display:none;text-align:center;padding:70px 20px;color:var(--muted)}
+.loading.show{display:block}
+.spinner{width:34px;height:34px;border:3px solid var(--hairline-2);border-top-color:var(--ink);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.alert-box{display:none;border:1px solid var(--hold-soft);background:var(--hold-tint);color:var(--hold);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px}
+.alert-box.show{display:block}
+
+.footnote{border-top:1px solid var(--hairline-2);background:var(--surface);margin-top:20px}
+.footnote .wrap{padding:18px 20px 24px}
+.footnote h4{font-size:13px;font-weight:700;margin-bottom:8px}
+.footnote p{font-size:12.5px;color:var(--muted);line-height:1.7;max-width:880px}
+.footnote .warn{margin-top:8px;color:var(--hold)}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="32" height="32" rx="7" stroke="#161816" stroke-width="1.6"/>
+        <path d="M7 23 L13 17 L17 20 L27 10" stroke="#CF332B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M22 10 H27 V15" stroke="#CF332B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div><h1>估值标尺</h1><div class="sub">五只核心指数基金 · 点位与市盈率自动筛选</div></div>
+    </div>
+    <div class="masthead-meta">
+      <div>数据来源：乌龟量化 wglh.com（PE 为滚动 TTM · 市值加权）</div>
+      <div>数据自动更新，最近更新：<b id="updatedAt">--</b></div>
+    </div>
+  </div>
+</header>
+
+<section class="band">
+  <div class="wrap">
+    <div class="band-grid">
+      <div class="band-counts">
+        <div class="band-count buy"><span class="n num" id="cntBuy">0</span><span class="t">买入时机</span></div>
+        <div class="band-count hold"><span class="n num" id="cntHold">0</span><span class="t">持有观望</span></div>
+        <div class="band-count sell"><span class="n num" id="cntSell">0</span><span class="t">卖出时机</span></div>
+      </div>
+      <div class="band-msg">
+        <div class="lead">当前估值概览</div>
+        <div id="alertLine" class="alertline">加载中…</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="toolbar">
+    <div class="chips" id="chips">
+      <button class="chip active" data-f="all">全部 <span class="c" id="cAll">0</span></button>
+      <button class="chip dot-buy" data-f="buy">买入时机 <span class="c" id="cBuy">0</span></button>
+      <button class="chip dot-hold" data-f="hold">持有观望 <span class="c" id="cHold">0</span></button>
+      <button class="chip dot-sell" data-f="sell">卖出时机 <span class="c" id="cSell">0</span></button>
+    </div>
+    <button class="btn-refresh" id="btnRefresh">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      <span id="refreshLabel">立即刷新</span>
+    </button>
+  </div>
+
+  <div class="alert-box" id="alertBox"></div>
+
+  <div class="loading show" id="loading">
+    <div class="spinner"></div>
+    <div>正在自动拉取最新估值数据…</div>
+  </div>
+
+  <main class="cards" id="cards"></main>
+</div>
+
+<footer class="footnote">
+  <div class="wrap">
+    <h4>口径说明</h4>
+    <p>点位为对应指数最新收盘点位，市盈率为指数滚动市盈率（PE TTM，市值加权）。当前 PE 低于买入线提示「买入时机」，高于卖出线提示「卖出时机」，介于二者之间提示「持有观望」。数据由后端每日自动登录 wglh 抓取，无需手动填写。</p>
+    <p class="warn">本工具仅用于个人估值记录，不构成任何投资建议。市场有风险，决策需谨慎。</p>
+  </div>
+</footer>
+
+<script>
+var state = { funds:[], filter:"all" };
+var SIG = {
+  buy:{title:"买入时机",desc:"市盈率已低于买入线，可考虑分批买入",cls:"buy"},
+  sell:{title:"卖出时机",desc:"市盈率已高于卖出线，可考虑分批止盈",cls:"sell"},
+  hold:{title:"持有观望",desc:"估值处于合理区间，暂不操作",cls:"hold"}
+};
+function fmtPrice(v){return Number(v).toLocaleString("zh-CN",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fmtPe(v){return Number(v).toFixed(2);}
+
+function iconBuy(){return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>';}
+function iconSell(){return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></svg>';}
+function iconHold(){return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>';}
+function iconLink(){return '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1"/><path d="M14 11a5 5 0 00-7 0l-2 2a5 5 0 007 7l1-1"/></svg>';}
+
+function scaleGeom(f){
+  var max=f.sellPe*1.3;
+  return {
+    buyW:f.buyPe/max*100, neutralW:(f.sellPe-f.buyPe)/max*100, sellW:(max-f.sellPe)/max*100,
+    marker:Math.max(0,Math.min(1,f.pe/max))*100,
+    buyTick:f.buyPe/max*100, sellTick:f.sellPe/max*100
+  };
+}
+
+function cardHtml(f){
+  var sig=SIG[f.signal];
+  var g=scaleGeom(f);
+  var sigIcon=f.signal==="buy"?iconBuy():f.signal==="sell"?iconSell():iconHold();
+  return '<article class="card sig-'+f.signal+'">'+
+    '<div class="card-topbar"></div>'+
+    '<div class="card-head"><div><h3>'+f.name+'</h3><div class="idx">'+f.date+' · '+f.id+'</div></div><span class="mkt '+f.mktCls+'">'+f.mkt+'</span></div>'+
+    '<div class="stats">'+
+      '<div class="stat"><span class="lab">指数点位</span><span class="big num">'+fmtPrice(f.price)+'</span><div class="meta">最新收盘点位</div></div>'+
+      '<div class="stat pe"><span class="lab">市盈率 PE</span><span class="big num">'+fmtPe(f.pe)+'</span><div class="meta">估值日 '+f.date+'</div></div>'+
+    '</div>'+
+    '<div class="signal '+sig.cls+'"><span class="ico">'+sigIcon+'</span><span class="txt"><b>'+sig.title+'</b><span>'+sig.desc+'</span></span></div>'+
+    '<div class="scale"><div class="scale-track">'+
+      '<div class="seg zb" style="width:'+g.buyW+'%"></div><div class="seg-div"></div>'+
+      '<div class="seg zn" style="width:'+g.neutralW+'%"></div><div class="seg-div"></div>'+
+      '<div class="seg zs" style="width:'+g.sellW+'%"></div>'+
+      '<div class="scale-marker" style="left:'+g.marker+'%"><div class="cap">PE '+fmtPe(f.pe)+'</div><div class="pin"></div></div>'+
+    '</div>'+
+    '<div class="scale-labels"><span class="tick" style="left:'+g.buyTick+'%">买入线 '+f.buyPe+'</span><span class="tick" style="left:'+g.sellTick+'%">卖出线 '+f.sellPe+'</span></div>'+
+    '<div class="scale-zones"><span>低估 · 买入</span><span>合理</span><span>高估 · 卖出</span></div></div>'+
+    '<div class="card-foot"><a class="src-link" href="'+f.url+'" target="_blank" rel="noopener">'+iconLink()+'wglh.com 数据源</a></div>'+
+  '</article>';
+}
+
+function render(){
+  var counts={buy:0,sell:0,hold:0};
+  state.funds.forEach(function(f){counts[f.signal]++;});
+  document.getElementById("cntBuy").textContent=counts.buy;
+  document.getElementById("cntHold").textContent=counts.hold;
+  document.getElementById("cntSell").textContent=counts.sell;
+  document.getElementById("cAll").textContent=state.funds.length;
+  document.getElementById("cBuy").textContent=counts.buy;
+  document.getElementById("cHold").textContent=counts.hold;
+  document.getElementById("cSell").textContent=counts.sell;
+
+  var buys=state.funds.filter(function(f){return f.signal==="buy";});
+  var sells=state.funds.filter(function(f){return f.signal==="sell";});
+  var line="";
+  if(sells.length){line+='<span class="tag-sell">卖出区间：</span>'+sells.map(function(f){return f.name+"（PE "+fmtPe(f.pe)+"）";}).join("、")+"；";}
+  if(buys.length){line+='<span class="tag-buy">买入区间：</span>'+buys.map(function(f){return f.name+"（PE "+fmtPe(f.pe)+"）";}).join("、")+"；";}
+  if(!sells.length&&!buys.length){line="当前没有指数越过买入或卖出线，以持有观望为主。";}
+  else{line+="其余指数处于合理区间，持有观望。";}
+  document.getElementById("alertLine").innerHTML=line;
+
+  var shown=state.funds.filter(function(f){return state.filter==="all"||f.signal===state.filter;});
+  document.getElementById("cards").innerHTML=shown.map(cardHtml).join("");
+}
+
+document.getElementById("chips").addEventListener("click",function(e){
+  var btn=e.target.closest(".chip");
+  if(!btn)return;
+  document.querySelectorAll(".chip").forEach(function(c){c.classList.remove("active");});
+  btn.classList.add("active");
+  state.filter=btn.getAttribute("data-f");
+  render();
+});
+
+function loadData(url){
+  return fetch(url).then(function(r){return r.json();}).then(function(p){
+    if(p.error){throw new Error(p.error);}
+    state.funds=p.data||[];
+    document.getElementById("updatedAt").textContent=p.updatedAt||"--";
+    var box=document.getElementById("alertBox");
+    if(p.warning){box.textContent=p.warning;box.className="alert-box show";}
+    else{box.className="alert-box";}
+    document.getElementById("loading").className="loading";
+    render();
+  });
+}
+
+document.getElementById("btnRefresh").addEventListener("click",function(){
+  var btn=document.getElementById("btnRefresh");
+  btn.disabled=true;
+  document.getElementById("refreshLabel").textContent="刷新中…";
+  loadData("/api/refresh").catch(function(){
+    return loadData("/api/getIndexData");
+  }).then(function(){
+    btn.disabled=false;
+    document.getElementById("refreshLabel").textContent="立即刷新";
+  }).catch(function(e){
+    btn.disabled=false;
+    document.getElementById("refreshLabel").textContent="立即刷新";
+    document.getElementById("loading").className="loading";
+    var box=document.getElementById("alertBox");
+    box.textContent="数据加载失败："+e.message;box.className="alert-box show";
+  });
+});
+
+loadData("/api/getIndexData").catch(function(e){
+  document.getElementById("loading").className="loading";
+  var box=document.getElementById("alertBox");
+  box.textContent="数据加载失败："+e.message;box.className="alert-box show";
+});
+</script>
+</body>
+</html>
