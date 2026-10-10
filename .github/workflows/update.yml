@@ -1,0 +1,62 @@
+name: 更新指数估值数据
+
+on:
+  schedule:
+    # UTC 01:15 与 12:15 = 北京时间 09:15 与 20:15
+    - cron: "15 1,12 * * *"
+  workflow_dispatch:
+
+# 部署 GitHub Pages 所需权限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 登录 wglh 抓取数据
+        env:
+          WGLH_USERNAME: ${{ secrets.WGLH_USERNAME }}
+          WGLH_PASSWORD: ${{ secrets.WGLH_PASSWORD }}
+        run: |
+          mkdir -p _site
+          cp site/index.html _site/index.html
+          python scripts/fetch_data.py _site
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传 Pages 产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
