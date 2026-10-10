@@ -422,7 +422,7 @@ document.getElementById("chipsStock").addEventListener("click",function(e){
 /* ── Band 更新 ── */
 function updateBand(){
   var counts={buy:0,sell:0,hold:0};
-  var items,lead,line;
+  var items,lead,line="";
   if(state.currentTab==="fund"){
     items=state.funds;lead="当前估值概览";
     items.forEach(function(f){counts[f.signal]++;});
