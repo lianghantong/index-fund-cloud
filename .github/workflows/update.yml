@@ -1,4 +1,4 @@
-name: 更新指数估值数据
+name: 更新估值数据
 
 on:
   schedule:
@@ -6,7 +6,6 @@ on:
     - cron: "15 1,12 * * *"
   workflow_dispatch:
 
-# 部署 GitHub Pages 所需权限
 permissions:
   contents: read
   pages: write
@@ -19,6 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 登录 wglh 抓取数据
+      - name: 登录 wglh 抓取指数基金数据
         env:
           WGLH_USERNAME: ${{ secrets.WGLH_USERNAME }}
           WGLH_PASSWORD: ${{ secrets.WGLH_PASSWORD }}
@@ -41,6 +41,11 @@ jobs:
           mkdir -p _site
           cp site/index.html _site/index.html
           python scripts/fetch_data.py _site
+
+      - name: A股股票筛选（AKShare）
+        run: |
+          python scripts/stock_screener.py
+          cp site/stock_data.json _site/stock_data.json || echo "stock_data.json not found, skipping"
 
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5
