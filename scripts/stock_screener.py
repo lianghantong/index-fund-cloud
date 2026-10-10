@@ -30,7 +30,12 @@ except Exception as e:
     out = {
         "updateTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "market": {"shenzhenPE": None, "treasury10Y": None},
-        "criteria": {"coarse": "", "fine": "", "buy": "", "sell": ""},
+        "criteria": {
+            "coarse": "连续5年 ROE>20% 且 净利润现金含量>80% 且 毛利率>40%",
+            "fine": "5年平均现金含量>=100% 且 资产负债率<60% 且 分红比率>=25%",
+            "buy": "深证A股PE<20 且 个股TTM PE<15 且 动态股息率>十年国债",
+            "sell": "个股PE>50 或 动态股息率<十年国债/3",
+        },
         "candidates": [],
         "summary": {"totalScreened": 0, "passedCoarseFine": 0, "buy": 0, "hold": 0, "sell": 0, "error": f"akshare import failed: {e}"},
     }
@@ -73,42 +78,98 @@ def safe_float(v):
         return None
 
 
-# ── 1. 股票列表 ───────────────────────────────────────
-def get_stock_list():
-    log("获取A股股票列表...")
-    df = ak.stock_info_a_code_name()
-    stocks = []
-    for _, row in df.iterrows():
-        code = str(row["code"]).zfill(6)
-        name = str(row["name"]).strip()
-        if code.startswith(("8", "4", "9")):
-            continue
-        if "ST" in name.upper() or "退" in name:
-            continue
-        if not code.startswith(("60", "68", "00", "30")):
-            continue
-        stocks.append({"code": code, "name": name})
-    log(f"共 {len(stocks)} 只A股")
-    return stocks
-
-
-# ── 2. 实时价格 ───────────────────────────────────────
-def get_prices():
-    log("获取A股实时行情...")
+# ── 1+2. 股票列表与实时价格（合并，优先用spot接口） ────
+def get_stocks_and_prices():
+    """从实时行情接口同时获取股票列表和价格，失败则降级。"""
+    # 方案1: stock_zh_a_spot（新浪，含代码/名称/最新价）
     try:
+        log("获取A股实时行情(stock_zh_a_spot)...")
         df = ak.stock_zh_a_spot()
+        stocks = []
         price_map = {}
         for _, row in df.iterrows():
-            raw = str(row["代码"])
+            raw = str(row.get("代码", ""))
             code = raw[2:] if len(raw) > 6 else raw
-            price = safe_float(row["最新价"])
+            name = str(row.get("名称", "")).strip()
+            price = safe_float(row.get("最新价"))
+            if not code or not code.isdigit() or len(code) != 6:
+                continue
+            if code.startswith(("8", "4", "9")):
+                continue
+            if "ST" in name.upper() or "退" in name:
+                continue
+            if not code.startswith(("60", "68", "00", "30")):
+                continue
+            stocks.append({"code": code, "name": name})
             if price and price > 0:
                 price_map[code] = price
-        log(f"获取到 {len(price_map)} 只股票价格")
-        return price_map
+        if stocks:
+            log(f"获取到 {len(stocks)} 只股票, {len(price_map)} 只有价格")
+            return stocks, price_map
+        log("stock_zh_a_spot 返回空，尝试降级方案")
     except Exception as e:
-        log(f"获取行情失败: {e}")
-        return {}
+        log(f"stock_zh_a_spot 失败: {e}")
+
+    # 方案2: stock_info_a_code_name 获取列表 + stock_zh_a_spot 获取价格
+    try:
+        log("降级: 获取股票列表(stock_info_a_code_name)...")
+        df_list = ak.stock_info_a_code_name()
+        stocks = []
+        for _, row in df_list.iterrows():
+            code = str(row["code"]).zfill(6)
+            name = str(row["name"]).strip()
+            if code.startswith(("8", "4", "9")):
+                continue
+            if "ST" in name.upper() or "退" in name:
+                continue
+            if not code.startswith(("60", "68", "00", "30")):
+                continue
+            stocks.append({"code": code, "name": name})
+        log(f"获取到 {len(stocks)} 只股票")
+        # 再获取价格
+        price_map = {}
+        try:
+            df_price = ak.stock_zh_a_spot()
+            for _, row in df_price.iterrows():
+                raw = str(row.get("代码", ""))
+                code = raw[2:] if len(raw) > 6 else raw
+                price = safe_float(row.get("最新价"))
+                if price and price > 0:
+                    price_map[code] = price
+            log(f"获取到 {len(price_map)} 只股票价格")
+        except Exception as e2:
+            log(f"获取价格失败: {e2}")
+        return stocks, price_map
+    except Exception as e:
+        log(f"降级方案也失败: {e}")
+
+    # 方案3: 分别获取沪市和深市列表
+    try:
+        log("最终降级: 分别获取沪市/深市股票列表...")
+        stocks = []
+        for func_name in ["stock_info_sh_name_code", "stock_info_sz_name_code"]:
+            try:
+                func = getattr(ak, func_name)
+                df = func()
+                code_col = "证券代码" if "证券代码" in df.columns else df.columns[0]
+                name_col = "证券简称" if "证券简称" in df.columns else df.columns[1]
+                for _, row in df.iterrows():
+                    code = str(row[code_col]).zfill(6)
+                    name = str(row[name_col]).strip()
+                    if code.startswith(("8", "4", "9")):
+                        continue
+                    if "ST" in name.upper() or "退" in name:
+                        continue
+                    if not code.startswith(("60", "68", "00", "30")):
+                        continue
+                    stocks.append({"code": code, "name": name})
+            except Exception as e3:
+                log(f"  {func_name} 失败: {e3}")
+        log(f"最终获取到 {len(stocks)} 只股票")
+        return stocks, {}
+    except Exception as e:
+        log(f"所有方案均失败: {e}")
+        return [], {}
 
 
 # ── 3. 从 abstract 提取年度财务数据 ───────────────────
@@ -393,16 +454,10 @@ def main():
     log("=" * 50)
 
     try:
-        stocks = get_stock_list()
+        stocks, price_map = get_stocks_and_prices()
     except Exception as e:
-        log(f"获取股票列表失败: {e}")
-        stocks = []
-
-    try:
-        price_map = get_prices()
-    except Exception as e:
-        log(f"获取行情失败: {e}")
-        price_map = {}
+        log(f"获取股票列表和价格失败: {e}")
+        stocks, price_map = [], {}
 
     log(f"并发抓取财务数据 (workers={MAX_WORKERS})...")
     candidates = []
@@ -435,8 +490,14 @@ def main():
         output = {
             "updateTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "market": {"shenzhenPE": market_pe, "treasury10Y": treasury_yield},
+            "criteria": {
+                "coarse": f"连续{YEARS}年 ROE>{COARSE_ROE}% 且 净利润现金含量>{COARSE_CASH}% 且 毛利率>{COARSE_GROSS}%",
+                "fine": f"{YEARS}年平均现金含量>={FINE_CASH_AVG}% 且 资产负债率<{FINE_DEBT}% 且 分红比率>={FINE_DIV_PAYOUT}%",
+                "buy": f"深证A股PE<{BUY_MARKET_PE} 且 个股TTM PE<{BUY_PE} 且 动态股息率>十年国债",
+                "sell": f"个股PE>{SELL_PE} 或 动态股息率<十年国债/3",
+            },
             "candidates": [],
-            "summary": {"totalScreened": len(stocks), "passed": 0, "buy": 0, "hold": 0, "sell": 0},
+            "summary": {"totalScreened": len(stocks), "passedCoarseFine": 0, "buy": 0, "hold": 0, "sell": 0},
         }
         os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
         with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
