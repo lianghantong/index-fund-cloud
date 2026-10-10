@@ -16,7 +16,29 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 
-import akshare as ak
+print(f"[DEBUG] Python {sys.version}", flush=True)
+print(f"[DEBUG] Working dir: {os.getcwd()}", flush=True)
+print(f"[DEBUG] Script path: {__file__}", flush=True)
+
+try:
+    import akshare as ak
+    print(f"[DEBUG] akshare version: {getattr(ak, '__version__', 'unknown')}", flush=True)
+except Exception as e:
+    print(f"[DEBUG] Failed to import akshare: {e}", flush=True)
+    traceback.print_exc()
+    # 输出空结果
+    out = {
+        "updateTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "market": {"shenzhenPE": None, "treasury10Y": None},
+        "criteria": {"coarse": "", "fine": "", "buy": "", "sell": ""},
+        "candidates": [],
+        "summary": {"totalScreened": 0, "passedCoarseFine": 0, "buy": 0, "hold": 0, "sell": 0, "error": f"akshare import failed: {e}"},
+    }
+    os.makedirs(os.path.join(os.path.dirname(__file__), "..", "site"), exist_ok=True)
+    with open(os.path.join(os.path.dirname(__file__), "..", "site", "stock_data.json"), "w", encoding="utf-8") as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+    sys.exit(0)
+
 import pandas as pd
 
 # ── 配置 ──────────────────────────────────────────────
@@ -369,7 +391,6 @@ def main():
     log("=" * 50)
     log("A股股票筛选开始")
     log("=" * 50)
-    log(f"akshare version: {getattr(ak, '__version__', 'unknown')}")
 
     try:
         stocks = get_stock_list()
